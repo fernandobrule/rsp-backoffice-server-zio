@@ -1,0 +1,22 @@
+services:
+  rsp-db:
+    image: postgis/postgis:17-3.5
+    container_name: rsp-db-dev
+    environment:
+      POSTGRES_DB: rsp_db_dev
+      POSTGRES_USER: ${POSTGRES_USER:-rsp_db_role_dev}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rsp_dev_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - rsp_data_dev:/var/lib/postgresql/data
+      - ./db/00-init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+      - ./db/01-real-estate-portal-db-ddl.sql:/docker-entrypoint-initdb.d/01-real-estate-portal-db-ddl.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d rsp_db_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  rsp_data_dev:
