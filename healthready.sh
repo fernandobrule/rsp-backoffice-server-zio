@@ -1,1 +1,1 @@
-curl http://localhost:8080/health/ready|jq .
+curl http://localhost:8181/health/ready|jq .
