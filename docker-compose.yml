@@ -1,22 +1,42 @@
 services:
-  rsp-db:
-    image: postgis/postgis:17-3.5
-    container_name: rsp-db-dev
+  postgres:
+    image: imresamu/postgis:16-3.5-bookworm
+    container_name: rsp_postgres_db_dev
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: rsp_db_dev
+      POSTGRES_DB: ${POSTGRES_DB:-rsp_db_dev}
       POSTGRES_USER: ${POSTGRES_USER:-rsp_db_role_dev}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rsp_dev_password}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-S8gUlJuf#ahNp}
+      # Optional: set locale/timezone
+      TZ: UTC
+      PGTZ: UTC
     ports:
       - "5432:5432"
     volumes:
-      - rsp_data_dev:/var/lib/postgresql/data
-      - ./db/00-init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
-      - ./db/01-real-estate-portal-db-ddl.sql:/docker-entrypoint-initdb.d/01-real-estate-portal-db-ddl.sql:ro
+      - rsp_db_volume:/var/lib/postgresql/data
+      # Optional: init scripts run on first startup
+      # - ./init-scripts:/docker-entrypoint-initdb.d
+    
+    #
+    # Shared Memory:
+    # Spatial queries can be highly resource-intensive. 
+    # Always include the shm_size configuration block 
+    # to prevent the container from crashing during large spatial joins.
+    shm_size: '256mb'
+    
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d rsp_db_dev"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - postgres_network
 
 volumes:
-  rsp_data_dev:
+  rsp_db_volume:
+    driver: local
+    name: rsp_data_dev
+
+networks:
+  postgres_network:
+    driver: bridge
