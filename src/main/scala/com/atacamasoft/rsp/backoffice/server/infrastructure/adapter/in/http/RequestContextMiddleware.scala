@@ -30,24 +30,30 @@ object RequestContextMiddleware:
     else ZIO.succeed(resp)
 
   def apply(cors: CorsPolicy): Middleware[Any] =
-  //def apply(cors: CorsPolicy): HandlerAspect[Any, Unit] =
     HandlerAspect.interceptHandlerStateful(
       Handler.fromFunctionZIO[Request] { req =>
         Clock.nanoTime.map { start =>
-          val rid = req.headers.get(RequestId).filter(_.nonEmpty).getOrElse(UUID.randomUUID().toString)
-          val cid = req.headers.get(CorrelationId).filter(_.nonEmpty).getOrElse(rid)
-          val enriched = req.addHeader(RequestId, rid).addHeader(CorrelationId, cid)
-          (State(rid, cid, req.method.name, req.url.path.encode, req.headers.get("Origin"), start), (enriched, ()))
+          val requestId = {
+            ZIO.logInfo(s"> before")
+            val rid = req.headers.get(RequestId).filter(_.nonEmpty).getOrElse(UUID.randomUUID().toString)
+            ZIO.logInfo(s"> rid[$rid]")
+            rid
+          }
+          val correlationId = req.headers.get(CorrelationId).filter(_.nonEmpty).getOrElse(requestId)
+          //val enriched = req.addHeader(RequestId, requestId).addHeader(CorrelationId, correlationId)
+          val enriched = req.updateHeaders(h =>
+            h.removeHeader(RequestId).removeHeader(CorrelationId) ++ Headers(RequestId, requestId) ++ Headers(CorrelationId, correlationId))
+          (State(requestId, correlationId, req.method.name, req.url.path.encode, req.headers.get("Origin"), start), (enriched, ()))
         }
       }
     )(
-      Handler.fromFunctionZIO[(State, Response)] { case (st, resp) =>
+      Handler.fromFunctionZIO[(State, Response)] { case (state, response) =>
         for
           end   <- Clock.nanoTime
-          fixed <- asErrorJson(resp, st.requestId)
-          out    = cors.decorate(fixed.addHeader(RequestId, st.requestId).addHeader(CorrelationId, st.correlationId), st.origin)
-          _     <- ZIO.logInfo(s"${st.method} ${st.path} -> ${out.status.code} (${(end - st.startNanos) / 1000000} ms)") @@
-                     ZIOAspect.annotated("request_id", st.requestId)
+          fixed <- asErrorJson(response, state.requestId)
+          out    = cors.decorate(fixed.addHeader(RequestId, state.requestId).addHeader(CorrelationId, state.correlationId), state.origin)
+          _     <- ZIO.logInfo(s"** ${state.method} ${state.path} -> ${out.status.code} (${(end - state.startNanos) / 1000000} ms)") @@
+                     ZIOAspect.annotated("request_id", state.requestId)
         yield out
       }
     )
